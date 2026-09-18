@@ -1,13 +1,25 @@
 #include "test_lib.h"
 #include <stdio.h>
 
-int run_test(test_func_t test, const char* name) {
+static int pass_ctr = 0;
+static int fail_ctr = 0;
+static int all_ctr = 0;
+
+int ct_run_test(ct_test_func_t test, const char* name) {
+    all_ctr++;
     printf(" %-45s ", name);
     fflush(stdout);
     int rc = test();
     if(rc == 0) {
         printf("[PASS]\n");
+        pass_ctr++;
         return 0;
     }
+    fail_ctr++;
     return 1;
+}
+
+void ct_tests_report(void) {
+    printf("Tests ended. In total: %d; Passed: %d; Failed: %d\n", all_ctr, pass_ctr, fail_ctr);
+    return;
 }
