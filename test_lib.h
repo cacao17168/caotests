@@ -1,19 +1,30 @@
 #ifndef TEST_LIB_H_
 #define TEST_LIB_H_
 
+#define RED     "\033[31m"
+#define GREEN   "\033[32m"
+#define RESET   "\033[0m"
+
 #define CT_ASSERT_EQ(expected, actual) \
     do {\
         if((expected) != (actual)) {\
-            printf("[FAIL] %s:%d: expected %d, actual %d\n", __FILE__, __LINE__, (int)(expected), (int)(actual));\
+            printf(RED "[FAIL]" RESET "%s:%d: expected %d, actual %d\n", __FILE__, __LINE__, (int)(expected), (int)(actual));\
             return 1;\
         }\
     } while (0)
 
-#define CT_ASSERT_COND(cond) \
+#define CT_ASSERT_TRUE(cond) \
     do {\
         if(!(cond)) {\
-            printf("[FAIL] %s: %d: asserting failed %s\n", __FILE__, __LINE__, #cond);\
+            printf(RED "[FAIL]" RESET "%s: %d: asserting true condition failed %s\n", __FILE__, __LINE__, #cond);\
             return 1;\
+        }\
+    } while(0)
+
+#define CT_ASSERT_FALSE(cond) \
+    do {\
+        if((cond)) {\
+            printf(RED "[FAIL]" RESET "%s: %d: asserting false condition failed %s\n", __FILE__, __LINE__, #cond);\
         }\
     } while(0)
 
