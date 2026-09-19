@@ -77,13 +77,13 @@ CT_TEST(assert_false_behavior) {
 
 //ct_run_test returns 0 for a passing test
 CT_TEST(run_test_returns_zero_on_pass) {
-    CT_ASSERT_EQ(0, ct_run_test(always_passing_test, "dummy_pass", __FILE__, 0));
+    CT_ASSERT_EQ(0, ct_run_test(always_passing_test, "dummy_pass", __FILE__, -1));
     return 0;
 }
 
 //ct_run_test returns 1 for a failing test
 CT_TEST(run_test_returns_one_on_fail) {
-    CT_ASSERT_EQ(1, ct_run_test(always_failing_test, "dummy_fail", __FILE__, 0));
+    CT_ASSERT_EQ(1, ct_run_test(always_failing_test, "dummy_fail", __FILE__, -1));
     return 0;
 }
 

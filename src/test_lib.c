@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 static int pass_ctr = 0;
 static int fail_ctr = 0;
@@ -72,7 +73,9 @@ int ct_run_test(ct_test_func_t test, const char* name, const char* file, int ver
     struct timespec start, end;
 
     all_ctr++;
-    printf("[RUN ] %-45s [%d]", name, all_ctr);
+    if(verbose >= 0) {
+        printf("[RUN ] %-45s [%d]", name, all_ctr);
+    }
     fflush(stdout);
 
     int pipefd[2];
@@ -85,6 +88,15 @@ int ct_run_test(ct_test_func_t test, const char* name, const char* file, int ver
     if(pid == 0) {
         setbuf(stdout, NULL);
         if(pipefd[0] >= 0) close(pipefd[0]);
+
+        if (verbose < 0) {
+            int dev_null = open("/dev/null", O_WRONLY);
+            if (dev_null >= 0) {
+                dup2(dev_null, STDOUT_FILENO);
+                dup2(dev_null, STDERR_FILENO);
+                close(dev_null);
+            }
+        }
 
         long long mem_bef = get_current_memory_bytes();
         clock_gettime(CLOCK_REALTIME, &start);
@@ -133,36 +145,40 @@ int ct_run_test(ct_test_func_t test, const char* name, const char* file, int ver
     if(pipefd[0] >= 0) close(pipefd[0]);
     ct_fail_buf[fail_len] = '\0';
 
-    if(verbose) printf(" %s ", file);
+    if(verbose >= 0 && verbose) printf(" %s ", file);
 
-    if(!crashed && rc == 0) {
-        if(!verbose) {
-            printf(GREEN "[PASS]\n" RESET);
-        } else {
-            printf(GREEN "[PASS]" RESET " %-38s | Time: %.6f сек", name, elapsed_ns / 1e9);
-            if(mem_diff > 0) {
-                printf(RED " | LEAK: +%lld byte" RESET "\n", mem_diff);
+    if(verbose >= 0) {
+        if(!crashed && rc == 0) {
+            if(!verbose) {
+                printf(GREEN "[PASS]\n" RESET);
             } else {
-                printf(" | Mem: ok\n");
+                printf(GREEN "[PASS]" RESET " %-38s | Time: %.6f сек", name, elapsed_ns / 1e9);
+                if(mem_diff > 0) {
+                    printf(RED " | LEAK: +%lld byte" RESET "\n", mem_diff);
+                } else {
+                    printf(" | Mem: ok\n");
+                }
             }
+            pass_ctr++;
+            return 0;
         }
-        pass_ctr++;
-        return 0;
+
+        if(fail_len > 0) {
+            printf("%s", ct_fail_buf);
+        }
+        if(crashed) {
+            int sig = WTERMSIG(status);
+            printf(RED "[CRASH]" RESET " signal %d (%s)\n", sig, strsignal(sig));
+        } else if(verbose) {
+            printf(RED "[FAIL]" RESET " %-45s | Time: %.6f sec\n", name, elapsed_ns / 1e9);
+        } else {
+            printf(RED "[FAIL]\n" RESET);
+        }
+        fail_ctr++;
+        return 1;
     }
 
-    if(fail_len > 0) {
-        printf("%s", ct_fail_buf);
-    }
-    if(crashed) {
-        int sig = WTERMSIG(status);
-        printf(RED "[CRASH]" RESET " signal %d (%s)\n", sig, strsignal(sig));
-    } else if(verbose) {
-        printf(RED "[FAIL]" RESET " %-45s | Time: %.6f sec\n", name, elapsed_ns / 1e9);
-    } else {
-        printf(RED "[FAIL]\n" RESET);
-    }
-    fail_ctr++;
-    return 1;
+    return (!crashed && rc == 0) ? 0 : 1;
 }
 
 void ct_tests_report(struct timespec start, struct timespec end, int verbose) {
