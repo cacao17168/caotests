@@ -1,5 +1,6 @@
 #include "test_lib.h"
 #include <bits/time.h>
+#include <stdarg.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,24 @@
 static int pass_ctr = 0;
 static int fail_ctr = 0;
 static int all_ctr = 0;
+
+char ct_fail_buf[4096];
+static size_t ct_fail_len = 0;
+
+void ct_fail_record(const char* fmt, ...) {
+    if(ct_fail_len >= sizeof(ct_fail_buf)) return;
+
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(ct_fail_buf + ct_fail_len, sizeof(ct_fail_buf) - ct_fail_len, fmt, ap);
+    va_end(ap);
+
+    if(n > 0) {
+        size_t used = (size_t)n;
+        if(used >= sizeof(ct_fail_buf) - ct_fail_len) used = sizeof(ct_fail_buf) - ct_fail_len - 1;
+        ct_fail_len += used;
+    }
+}
 
 long long get_current_memory_bytes(void) {
     FILE* file = fopen("/proc/self/statm", "r");
@@ -25,6 +44,28 @@ long long get_current_memory_bytes(void) {
 
     long page_size = sysconf(_SC_PAGESIZE);
     return (long long)pages * page_size;
+}
+
+static int write_all(int fd, const void* buf, size_t len) {
+    const char* p = buf;
+    while(len > 0) {
+        ssize_t n = write(fd, p, len);
+        if(n <= 0) return -1;
+        p += n;
+        len -= (size_t)n;
+    }
+    return 0;
+}
+
+static int read_all(int fd, void* buf, size_t len) {
+    char* p = buf;
+    while(len > 0) {
+        ssize_t n = read(fd, p, len);
+        if(n <= 0) return -1;
+        p += n;
+        len -= (size_t)n;
+    }
+    return 0;
 }
 
 int ct_run_test(ct_test_func_t test, const char* name, const char* file, int verbose) {
@@ -57,12 +98,17 @@ int ct_run_test(ct_test_func_t test, const char* name, const char* file, int ver
         double elapsed_ns = (double)(end.tv_sec - start.tv_sec) * 1e9 + (double)(end.tv_nsec - start.tv_nsec);
 
         if(pipefd[1] >= 0) {
-            if(write(pipefd[1], &rc, sizeof(rc)) != sizeof(rc)) _exit(1);
-            if(write(pipefd[1], &elapsed_ns, sizeof(elapsed_ns)) != sizeof(elapsed_ns)) _exit(1);
-            if(write(pipefd[1], &mem_diff, sizeof(mem_diff)) != sizeof(mem_diff)) _exit(1);
-            close(pipefd[1]);
+            size_t len = ct_fail_len;
+            if(write_all(pipefd[1], &rc, sizeof(rc)) == 0 &&
+               write_all(pipefd[1], &elapsed_ns, sizeof(elapsed_ns)) == 0 &&
+               write_all(pipefd[1], &mem_diff, sizeof(mem_diff)) == 0 &&
+               write_all(pipefd[1], &len, sizeof(len)) == 0 &&
+               (len == 0 || write_all(pipefd[1], ct_fail_buf, len) == 0)) {
+                close(pipefd[1]);
+                _exit(0);
+            }
         }
-        _exit(0);
+        _exit(1);
     }
 
     if(pipefd[1] >= 0) close(pipefd[1]);
@@ -73,14 +119,19 @@ int ct_run_test(ct_test_func_t test, const char* name, const char* file, int ver
     int rc = 1;
     double elapsed_ns = 0;
     long long mem_diff = 0;
+    size_t fail_len = 0;
     int crashed = WIFSIGNALED(status);
 
     if(!crashed && pipefd[0] >= 0) {
-        if(read(pipefd[0], &rc, sizeof(rc)) != sizeof(rc)) rc = 1;
-        if(read(pipefd[0], &elapsed_ns, sizeof(elapsed_ns)) != sizeof(elapsed_ns)) elapsed_ns = 0;
-        if(read(pipefd[0], &mem_diff, sizeof(mem_diff)) != sizeof(mem_diff)) mem_diff = 0;
+        if(read_all(pipefd[0], &rc, sizeof(rc)) != 0) rc = 1;
+        if(read_all(pipefd[0], &elapsed_ns, sizeof(elapsed_ns)) != 0) elapsed_ns = 0;
+        if(read_all(pipefd[0], &mem_diff, sizeof(mem_diff)) != 0) mem_diff = 0;
+        if(read_all(pipefd[0], &fail_len, sizeof(fail_len)) != 0) fail_len = 0;
+        if(fail_len > sizeof(ct_fail_buf) - 1) fail_len = sizeof(ct_fail_buf) - 1;
+        if(fail_len > 0 && read_all(pipefd[0], ct_fail_buf, fail_len) != 0) fail_len = 0;
     }
     if(pipefd[0] >= 0) close(pipefd[0]);
+    ct_fail_buf[fail_len] = '\0';
 
     if(verbose) printf(" %s ", file);
 
@@ -99,11 +150,14 @@ int ct_run_test(ct_test_func_t test, const char* name, const char* file, int ver
         return 0;
     }
 
+    if(fail_len > 0) {
+        printf("%s", ct_fail_buf);
+    }
     if(crashed) {
         int sig = WTERMSIG(status);
         printf(RED "[CRASH]" RESET " signal %d (%s)\n", sig, strsignal(sig));
     } else if(verbose) {
-        printf(RED "[FAIL]" RESET "(%-45s, took %f sec)\n", name, elapsed_ns);
+        printf(RED "[FAIL]" RESET " %-45s | Time: %.6f sec\n", name, elapsed_ns / 1e9);
     } else {
         printf(RED "[FAIL]\n" RESET);
     }
