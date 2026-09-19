@@ -1,7 +1,10 @@
 #include "test_lib.h"
 #include <bits/time.h>
+#include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -31,24 +34,61 @@ int ct_run_test(ct_test_func_t test, const char* name, const char* file, int ver
     printf("[RUN ] %-45s [%d]", name, all_ctr);
     fflush(stdout);
 
-    long long mem_bef = get_current_memory_bytes();
-    clock_gettime(CLOCK_REALTIME, &start); //function start time
+    int pipefd[2];
+    if(pipe(pipefd) != 0) {
+        pipefd[0] = -1;
+        pipefd[1] = -1;
+    }
 
-    int rc = test();
+    pid_t pid = fork();
+    if(pid == 0) {
+        setbuf(stdout, NULL);
+        if(pipefd[0] >= 0) close(pipefd[0]);
 
-    clock_gettime(CLOCK_REALTIME, &end); //function end time
-    long long mem_aft = get_current_memory_bytes();
-    long long mem_diff = mem_aft - mem_bef;
+        long long mem_bef = get_current_memory_bytes();
+        clock_gettime(CLOCK_REALTIME, &start);
 
-    double elapsed_ns = (double)(end.tv_sec - start.tv_sec) * 1e9 + (double)(end.tv_nsec - start.tv_nsec); //calculate function duration
+        int rc = test();
+
+        clock_gettime(CLOCK_REALTIME, &end);
+        long long mem_aft = get_current_memory_bytes();
+        long long mem_diff = mem_aft - mem_bef;
+
+        double elapsed_ns = (double)(end.tv_sec - start.tv_sec) * 1e9 + (double)(end.tv_nsec - start.tv_nsec);
+
+        if(pipefd[1] >= 0) {
+            if(write(pipefd[1], &rc, sizeof(rc)) != sizeof(rc)) _exit(1);
+            if(write(pipefd[1], &elapsed_ns, sizeof(elapsed_ns)) != sizeof(elapsed_ns)) _exit(1);
+            if(write(pipefd[1], &mem_diff, sizeof(mem_diff)) != sizeof(mem_diff)) _exit(1);
+            close(pipefd[1]);
+        }
+        _exit(0);
+    }
+
+    if(pipefd[1] >= 0) close(pipefd[1]);
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+
+    int rc = 1;
+    double elapsed_ns = 0;
+    long long mem_diff = 0;
+    int crashed = WIFSIGNALED(status);
+
+    if(!crashed && pipefd[0] >= 0) {
+        if(read(pipefd[0], &rc, sizeof(rc)) != sizeof(rc)) rc = 1;
+        if(read(pipefd[0], &elapsed_ns, sizeof(elapsed_ns)) != sizeof(elapsed_ns)) elapsed_ns = 0;
+        if(read(pipefd[0], &mem_diff, sizeof(mem_diff)) != sizeof(mem_diff)) mem_diff = 0;
+    }
+    if(pipefd[0] >= 0) close(pipefd[0]);
 
     if(verbose) printf(" %s ", file);
 
-    if(rc == 0) {
+    if(!crashed && rc == 0) {
         if(!verbose) {
             printf(GREEN "[PASS]\n" RESET);
         } else {
-            printf(GREEN "[PASS]" RESET " %-38s | Time: %.6f сек", name, elapsed_ns / 1e9); //verbose output
+            printf(GREEN "[PASS]" RESET " %-38s | Time: %.6f сек", name, elapsed_ns / 1e9);
             if(mem_diff > 0) {
                 printf(RED " | LEAK: +%lld byte" RESET "\n", mem_diff);
             } else {
@@ -59,7 +99,14 @@ int ct_run_test(ct_test_func_t test, const char* name, const char* file, int ver
         return 0;
     }
 
-    if(verbose) printf("(%-45s, took %f sec)\n", name, elapsed_ns); //verbose output
+    if(crashed) {
+        int sig = WTERMSIG(status);
+        printf(RED "[CRASH]" RESET " signal %d (%s)\n", sig, strsignal(sig));
+    } else if(verbose) {
+        printf(RED "[FAIL]" RESET "(%-45s, took %f sec)\n", name, elapsed_ns);
+    } else {
+        printf(RED "[FAIL]\n" RESET);
+    }
     fail_ctr++;
     return 1;
 }
@@ -67,8 +114,8 @@ int ct_run_test(ct_test_func_t test, const char* name, const char* file, int ver
 void ct_tests_report(struct timespec start, struct timespec end, int verbose) {
     printf("Tests ended. In total: %d; Passed: %d; Failed: %d\n", all_ctr, pass_ctr, fail_ctr);
 
-    double elapsed_ns = (double)(end.tv_sec - start.tv_sec) * 1e9 + (double)(end.tv_nsec - start.tv_nsec); //calculate tests duration
-    if(verbose) printf("Time spend: %f\n", elapsed_ns); //verbose output
+    double elapsed_ns = (double)(end.tv_sec - start.tv_sec) * 1e9 + (double)(end.tv_nsec - start.tv_nsec);
+    if(verbose) printf("Time spend: %f\n", elapsed_ns);
 
     return;
 }
@@ -98,9 +145,19 @@ int main(int argc, char *argv[]) {
         if(!quiet) {
             ct_run_test(t->func, t->name, t->file, verbose);
         } else {
-            int rc = t->func();
+            pid_t pid = fork();
+            if(pid == 0) {
+                setbuf(stdout, NULL);
+                int rc = t->func();
+                _exit(rc == 0 ? 0 : 1);
+            }
+
+            int status = 0;
+            waitpid(pid, &status, 0);
+
             all_ctr++;
-            if(rc == 0) pass_ctr++; else fail_ctr++;
+            if(WIFSIGNALED(status) || WEXITSTATUS(status) != 0) fail_ctr++;
+            else pass_ctr++;
         }
     }
 

@@ -41,7 +41,7 @@ typedef struct {
 //macro for registering tests
 #define CT_TEST(name) \
     int name(void); \
-    __attribute__((used, section("ct_tests"))) \
+    __attribute__((used, section("ct_tests"), aligned(8))) \
     static ct_test_case_t test_case_##name = { name, #name , __FILE__}; \
     int name(void)
 
