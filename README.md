@@ -30,4 +30,8 @@ If you don't remove ```tests``` dir, ```test_framework``` will execute meta test
 
 You can also use assertion functions as you want in your project.
 
+## 4. Build
+Add your file with tests to ```test_framework``` build conditions in makefile. After building project you need to execute ```test_framework```. You can also use ```--verbose``` and ```--quiet```.
+
+
 Hope this will help u.
