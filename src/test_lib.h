@@ -6,10 +6,14 @@
 #define GREEN   "\033[32m"
 #define RESET   "\033[0m"
 
+extern char ct_fail_buf[4096];
+
+void ct_fail_record(const char* fmt, ...);
+
 #define CT_ASSERT_EQ(expected, actual) \
     do {\
         if((expected) != (actual)) {\
-            printf(RED "[FAIL]" RESET "%s:%d: expected %d, actual %d\n", __FILE__, __LINE__, (int)(expected), (int)(actual));\
+            ct_fail_record(RED "[FAIL]" RESET "%s:%d: expected %d, actual %d\n", __FILE__, __LINE__, (int)(expected), (int)(actual));\
             return 1;\
         }\
     } while (0)
@@ -17,7 +21,7 @@
 #define CT_ASSERT_TRUE(cond) \
     do {\
         if(!(cond)) {\
-            printf(RED "[FAIL]" RESET "%s: %d: asserting true condition failed %s\n", __FILE__, __LINE__, #cond);\
+            ct_fail_record(RED "[FAIL]" RESET "%s: %d: asserting true condition failed %s\n", __FILE__, __LINE__, #cond);\
             return 1;\
         }\
     } while(0)
@@ -25,7 +29,7 @@
 #define CT_ASSERT_FALSE(cond) \
     do {\
         if((cond)) {\
-            printf(RED "[FAIL]" RESET "%s: %d: asserting false condition failed %s\n", __FILE__, __LINE__, #cond);\
+            ct_fail_record(RED "[FAIL]" RESET "%s: %d: asserting false condition failed %s\n", __FILE__, __LINE__, #cond);\
             return 1;\
         }\
     } while(0)
