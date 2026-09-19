@@ -1,5 +1,6 @@
 #ifndef TEST_LIB_H_
 #define TEST_LIB_H_
+#include <time.h>
 
 #define RED     "\033[31m"
 #define GREEN   "\033[32m"
@@ -25,12 +26,13 @@
     do {\
         if((cond)) {\
             printf(RED "[FAIL]" RESET "%s: %d: asserting false condition failed %s\n", __FILE__, __LINE__, #cond);\
+            return 1;\
         }\
     } while(0)
 
 typedef int (*ct_test_func_t)(void); //test function type
 
-int ct_run_test(ct_test_func_t test, const char* name); //execute test function
-void ct_tests_report(void); //display tests results
+int ct_run_test(ct_test_func_t test, const char* name, int verbose); //execute test function
+void ct_tests_report(struct timespec start, struct timespec end, int verbose); //display tests results
 
 #endif
