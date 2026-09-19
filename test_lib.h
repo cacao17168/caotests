@@ -32,7 +32,24 @@
 
 typedef int (*ct_test_func_t)(void); //test function type
 
-int ct_run_test(ct_test_func_t test, const char* name, int verbose); //execute test function
+typedef struct {
+    ct_test_func_t func;
+    const char* name;
+    const char* file;
+} ct_test_case_t; //test function info structure
+
+//macro for registering tests
+#define CT_TEST(name) \
+    int name(void); \
+    __attribute__((used, section("ct_tests"))) \
+    static ct_test_case_t test_case_##name = { name, #name , __FILE__}; \
+    int name(void)
+
+//linker markers define beginning and ending tests section
+extern ct_test_case_t __start_ct_tests;
+extern ct_test_case_t __stop_ct_tests;
+
+int ct_run_test(ct_test_func_t test, const char* name, const char* file, int verbose); //execute test function
 void ct_tests_report(struct timespec start, struct timespec end, int verbose); //display tests results
 
 #endif
