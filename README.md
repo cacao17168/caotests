@@ -7,9 +7,11 @@ git clone https://github.com/cacao17168/caotests.git
 cd caotests
 ```
 ## 2. Install dependencies
-```sh
-sudo apt install/pacman -S build-essential/base-devel
-```
+
+| Distribution | Package | Command |
+|---|---|---|
+| Debian | `build-essential` | `sudo apt install build-essential` |
+| Arch Linux | `base-devel` | `sudo pacman -S base-devel` |
 ## 3. Execution
 Add ```src/test_lib.h``` to your source file:
 ```c
