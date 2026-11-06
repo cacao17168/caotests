@@ -1,20 +1,27 @@
 CC = gcc
-FLAGS = -g -O0 -Wall -Wextra
-INCLUDES = -Isrc/
+CFLAGS = -g -O0 -Wall -Wextra
+
+INCLUDES = -Isrc/ $(USER_INCLUDES)
+
+SRC_DIR = src
+TESTS_DIR = tests
+
+SRC = $(SRC_DIR)/test_lib.c $(TESTS_DIR)/meta_tests.c $(TESTS_DIR)/flags_meta_tests.c
+SRC_FIXT = $(SRC_DIR)/test_lib.c $(TESTS_DIR)/fixture.c
 
 all: test_framework fixture_tests
 
 # framework + meta tests
-test_framework: src/test_lib.c tests/meta_tests.c tests/flags_meta_tests.c src/test_lib.h
-	$(CC) $(FLAGS) $(INCLUDES) src/test_lib.c tests/meta_tests.c tests/flags_meta_tests.c -o test_framework
+test_framework: $(SRC)
+	$(CC) $^ $(INCLUDES) -o $@
 
 # fixture for flags tests(1 complete and 1 fail)
-fixture_tests: src/test_lib.c tests/fixture.c src/test_lib.h
-	$(CC) $(FLAGS) $(INCLUDES) src/test_lib.c tests/fixture.c -o fixture_tests
+fixture_tests: $(SRC_FIXT)
+	$(CC) $^ $(INCLUDES) -o $@
 
 # make all and launch meta tests
 test: all
-	./test_framework
+	./test_framework && ./fixture_tests
 
 clean:
 	rm -f test_framework fixture_tests
